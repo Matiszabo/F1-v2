@@ -1,19 +1,20 @@
-# F1: DRIVE TO SURVIVE - Todo en un solo archivo con variables originales y comentarios en español
 import pygame
 import sys
 import time
 import random
 
+# Inicialización de Pygame y audio
 pygame.init()
 pygame.mixer.init()
 
-# Dimensiones de la pantalla
+# Dimensiones de la ventana
 ancho, alto = 800, 600
 pantalla = pygame.display.set_mode((ancho, alto))
 pygame.display.set_caption("F1: DRIVE TO SURVIVE")
+reloj = pygame.time.Clock()
 
 # Carga de recursos
-fondo_menu = pygame.image.load("Fondo.png")
+fondo_menu = pygame.transform.scale(pygame.image.load("Fondo.png"), (ancho, alto))
 fondo_instrucciones = pygame.image.load("Fondo Instrucciones.jpg")
 ferrari = pygame.transform.scale(pygame.image.load("Ferrari.png"), (56, 155))
 ferrari_ancho = 56
@@ -21,174 +22,335 @@ borde1 = pygame.transform.scale(pygame.image.load("Borde Izquierdo.png"), (175, 
 borde2 = pygame.transform.scale(pygame.image.load("Borde Derecho.png"), (175, 600))
 pista = pygame.transform.scale(pygame.image.load("Pista.png"), (12, 35))
 humo_original = pygame.transform.scale(pygame.image.load("Humo explosion.png"), (150, 150))
-obstaculo_imagenes = [
-    pygame.transform.scale(pygame.image.load(img), (56, 155)) for img in [
-        "Red Bull.png", "Mercedes.png", "McLaren.png", "Alpine.png",
-        "Aston Martin.png", "Williams.png", "Haas.png", "Racing Bulls.png", "Kick.png"
-    ]
-]
+obstaculo_imagenes = [pygame.transform.scale(pygame.image.load(img), (56, 155)) for img in [
+    "Red Bull.png", "Mercedes.png", "McLaren.png", "Alpine.png",
+    "Aston Martin.png", "Williams.png", "Haas.png", "Racing Bulls.png", "Kick.png"
+]]
+
+# Carga de sonidos
+boton_sound = pygame.mixer.Sound("boton.mp3")
+explosion_sound = pygame.mixer.Sound("explosion.wav")
+
+# Selección de fuente estilo F1 simulada con SysFont más estilizada
+f1_font = pygame.font.SysFont("Arial Narrow", 72, bold=True)
+
+# Mensaje de choque
 msjChocar = pygame.font.SysFont(None, 150).render("¡CHOCASTE!", True, (255, 255, 255))
 
-# Música del menú principal
-pygame.mixer.music.load("Cancion.mp3")
-reloj = pygame.time.Clock()
+# Función para mostrar nivel alcanzado
+def mostrar_mensaje_nivel(nivel):
+    font = pygame.font.SysFont(None, 100)
+    msg = font.render(f"¡Nivel {nivel}!", True, (255, 255, 0))
+    pantalla.blit(msg, ((ancho - msg.get_width()) // 2, (alto - msg.get_height()) // 2))
+    pygame.display.update()
+    time.sleep(2)
 
-# Función para reiniciar variables del juego
+# Reiniciar variables del juego a nivel 0
 def reiniciar_juego():
-    x = 400
-    y = 450
-    coordenadaX = 0
-    obstaculoY = -155
-    obstaculoX = random.randrange(175, 625)
-    obstaculo = random.randint(0, 8)
-    auto_pasado = 0
-    puntaje = 0
-    nivel = 0
-    return x, y, coordenadaX, obstaculoX, obstaculoY, obstaculo, auto_pasado, puntaje, nivel
+    x, y, dx = 400, 450, 0
+    obsY = -155
+    obsX = random.randrange(175, 625)
+    obs = random.randint(0, len(current_obstaculos) - 1)
+    return x, y, dx, obsX, obsY, obs, 0, 0, 0
 
-# Dibuja botón con texto centrado
-def dibujar_boton(texto, x, y, ancho, alto, color):
+# Dibujar botón con animación hover/click
+def dibujar_boton(texto, x, y, w, h, color_base):
     fuente = pygame.font.SysFont(None, 36)
-    rect = pygame.Rect(x, y, ancho, alto)
-    pygame.draw.rect(pantalla, color, rect)
-    texto_render = fuente.render(texto, True, (255, 255, 255))
-    texto_rect = texto_render.get_rect(center=rect.center)
-    pantalla.blit(texto_render, texto_rect)
+    rect = pygame.Rect(x, y, w, h)
+    mx, my = pygame.mouse.get_pos()
+    click = pygame.mouse.get_pressed()[0]
+    color = list(color_base)
+    if rect.collidepoint((mx, my)):
+        color = [min(255, c + 40) for c in color]
+        if click:
+            color = [max(0, c - 80) for c in color]
+    pygame.draw.rect(pantalla, color, rect, border_radius=5)
+    txt = fuente.render(texto, True, (255, 255, 255))
+    pantalla.blit(txt, txt.get_rect(center=rect.center))
     return rect
 
-# Dibuja los elementos de fondo de la pista
-def fondo(pista_posY):
+# Dibuja pista y bordes
+def fondo(pY):
     pantalla.fill((29, 29, 28))
     pantalla.blit(borde1, (0, 0))
     pantalla.blit(borde2, (625, 0))
-    x_centro = (ancho - pista.get_width()) // 2
+    cx = (ancho - pista.get_width()) // 2
     for i in range(8):
-        y = pista_posY + i * 85
-        pantalla.blit(pista, (x_centro, y - 85))
+        pantalla.blit(pista, (cx, pY + i * 85 - 85))
 
-# Panel de información durante el juego
-def tabla_puntaje(pasado, puntaje, nivel, velocidad, velocidad_base):
-    ancho_panel = 270
-    alto_panel = 130
-    x_panel = 10
-    y_panel = 10
-    panel = pygame.Surface((ancho_panel, alto_panel), pygame.SRCALPHA)
-    color_fondo = (20, 20, 20, 180)
-    panel.fill(color_fondo)
-    fuente_titulo = pygame.font.SysFont("Arial", 26, bold=True)
-    fuente_valor = pygame.font.SysFont("Arial", 24)
+# Panel de estadísticas y tabla de puntajes
+def tabla_puntaje(pas, pts, lvl, vel, vel_base):
+    panel = pygame.Surface((270, 130), pygame.SRCALPHA)
+    panel.fill((20, 20, 20, 180))
+    fT = pygame.font.SysFont("Arial", 26, bold=True)
+    fV = pygame.font.SysFont("Arial", 24)
+    datos = [("Autos Pasados: ", pas), ("Puntaje:", pts), ("Nivel:", lvl), ("Velocidad:", f"{vel*10} KM/H")]
+    for i, (label, val) in enumerate(datos):
+        tL = fT.render(label, True, (255, 255, 255))
+        color = (255, 255, 255)
+        if i == 3:
+            if vel > vel_base:
+                color = (255, 0, 0)
+            elif vel < vel_base:
+                color = (0, 255, 0)
+        tV = fV.render(str(val), True, color)
+        panel.blit(tL, (15, 10 + i * 30))
+        panel.blit(tV, (185, 12 + i * 30))
+    pantalla.blit(panel, (10, 10))
 
-    texto_pasados = fuente_titulo.render("Autos Pasados:", True, (255, 255, 255))
-    valor_pasados = fuente_valor.render(str(pasado), True, (200, 200, 200))
+    # Tabla de puntajes (persistente durante la ejecución)
+    if not hasattr(tabla_puntaje, "puntajes"):
+        tabla_puntaje.puntajes = []
 
-    texto_puntaje = fuente_titulo.render("Puntaje:", True, (255, 255, 255))
-    valor_puntaje = fuente_valor.render(str(puntaje), True, (200, 200, 200))
+    def agregar_puntaje(nombre, puntaje):
+        tabla_puntaje.puntajes.append((nombre, puntaje))
+        tabla_puntaje.puntajes.sort(key=lambda x: x[1], reverse=True)
 
-    texto_nivel = fuente_titulo.render("Nivel:", True, (255, 255, 255))
-    valor_nivel = fuente_valor.render(str(nivel), True, (200, 200, 200))
+    tabla_puntaje.agregar_puntaje = agregar_puntaje
 
-    texto_velocidad = fuente_titulo.render("Velocidad:", True, (255, 255, 255))
-    velocidad_mostrada = velocidad * 10
-    if velocidad > velocidad_base:
-        color_vel = (255, 0, 0)
-    elif velocidad < velocidad_base:
-        color_vel = (0, 255, 0)
-    else:
-        color_vel = (255, 255, 255)
-    valor_velocidad = fuente_valor.render(str(velocidad_mostrada) + " KM/H", True, color_vel)
+    def mostrar_tabla_puntajes():
+        fuente = pygame.font.SysFont(None, 36)
+        for i, (nombre, puntaje) in enumerate(tabla_puntaje.puntajes[:5]):
+            texto = fuente.render(f"{i+1}. {nombre}: {puntaje}", True, (255, 255, 255))
+            pantalla.blit(texto, (20, 140 + i * 40))
 
-    separacion_vertical = 30
-    margen_izquierdo = 15
+    mostrar_tabla_puntajes()
 
-    panel.blit(texto_pasados, (margen_izquierdo, 10))
-    panel.blit(valor_pasados, (margen_izquierdo + 170, 12))
+# Mostrar choque (pausar música y reproducir solo sonido de choque)
+def mostrar_mensaje_choque(x, y, obsX):
+    pygame.mixer.music.pause()
+    pantalla.blit(humo_original, (x - humo_original.get_width()//2,
+                                   y - humo_original.get_height()//2))
+    pantalla.blit(msjChocar, ((ancho-msjChocar.get_width())//2,
+                               (alto-msjChocar.get_height())//2))
+    explosion_sound.play()
+    pygame.display.update()
+    time.sleep(2)
+    pygame.mixer.music.unpause()
 
-    panel.blit(texto_puntaje, (margen_izquierdo, 10 + separacion_vertical))
-    panel.blit(valor_puntaje, (margen_izquierdo + 170, 12 + separacion_vertical))
-
-    panel.blit(texto_nivel, (margen_izquierdo, 10 + separacion_vertical * 2))
-    panel.blit(valor_nivel, (margen_izquierdo + 170, 12 + separacion_vertical * 2))
-
-    panel.blit(texto_velocidad, (margen_izquierdo, 10 + separacion_vertical * 3))
-    panel.blit(valor_velocidad, (margen_izquierdo + 170, 12 + separacion_vertical * 3))
-
-    pantalla.blit(panel, (x_panel, y_panel))
-
-# Lógica del juego principal
-def juego():
-    x, y, coordenadaX, obstaculoX, obstaculoY, obstaculo, auto_pasado, puntaje, nivel = reiniciar_juego()
-    velocidad_base = 10
-    velocidadObstaculo = velocidad_base
-    pista_posY = 0
-    acelerar = desacelerar = False
-    contador_a = contador_d = 0
-    pygame.mixer.music.play(-1)
-    jugando = True
-
-    while jugando:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
+# Pantalla de instrucciones con overlay
+def mostrar_instrucciones():
+    fuente = pygame.font.SysFont(None, 32)
+    lineas = [
+        "INSTRUCCIONES:",
+        "<- / -> o A/D: Mover auto",
+        "Flecha Arriba / W: Acelerar",
+        "Flecha Abajo / S: Desacelerar",
+        "P: Pausar/Reanudar juego",
+        "Evitar choques con bordes o autos",
+        "Ganar puntos al pasar autos: ",
+        "15 si vas rápido, ",
+        "10 velocidad normal, ",
+        "5 si vas lento",
+        "Esc o VOLVER: Regresar al menú"
+    ]
+    overlay = pygame.Surface((ancho, alto), pygame.SRCALPHA)
+    overlay.fill((0, 0, 0, 200))
+    btn_volver = None
+    while True:
+        for e in pygame.event.get():
+            if e.type == pygame.QUIT:
                 pygame.quit(); sys.exit()
-            if event.type == pygame.KEYDOWN:
-                if event.key in [pygame.K_LEFT, pygame.K_a]: coordenadaX = -10
-                if event.key in [pygame.K_RIGHT, pygame.K_d]: coordenadaX = 10
-                if event.key in [pygame.K_UP, pygame.K_w]: acelerar = True
-                if event.key in [pygame.K_DOWN, pygame.K_s]: desacelerar = True
-            if event.type == pygame.KEYUP:
-                if event.key in [pygame.K_LEFT, pygame.K_RIGHT, pygame.K_a, pygame.K_d]: coordenadaX = 0
-                if event.key in [pygame.K_UP, pygame.K_w]: acelerar, contador_a = False, 0
-                if event.key in [pygame.K_DOWN, pygame.K_s]: desacelerar, contador_d = False, 0
-
-        x += coordenadaX
-
-        if acelerar:
-            contador_a += 1
-            if contador_a >= 4:
-                velocidadObstaculo += 1
-                contador_a = 0
-
-        if desacelerar:
-            contador_d += 1
-            if contador_d >= 4:
-                velocidadObstaculo = max(1, velocidadObstaculo - 1)
-                contador_d = 0
-
-        obstaculoY += velocidadObstaculo
-        pista_posY = (pista_posY + velocidadObstaculo) % 85
-
-        if obstaculoY > alto:
-            obstaculoY = -155
-            obstaculoX = random.randrange(175, 625)
-            obstaculo = random.randint(0, 8)
-            auto_pasado += 1
-            puntaje += 15 if velocidadObstaculo > velocidad_base else 5 if velocidadObstaculo < velocidad_base else 10
-
-        if x < 175:
-            mostrar_mensaje_choque(x, y, obstaculoX, 'pared_izq')
-            jugando = False
-            break
-        if x > 625 - ferrari_ancho:
-            mostrar_mensaje_choque(x, y, obstaculoX, 'pared_der')
-            jugando = False
-            break
-        if y < obstaculoY + 155 and y + 155 > obstaculoY:
-            if x + ferrari_ancho > obstaculoX and x < obstaculoX + 56:
-                mostrar_mensaje_choque(x, y, obstaculoX, 'auto')
-                jugando = False
-                break
-
-        if auto_pasado == 10 * (nivel + 1):
-            nivel += 1
-            velocidad_base += 3
-            if velocidadObstaculo < velocidad_base:
-                velocidadObstaculo = velocidad_base
-
-        fondo(pista_posY)
-        pantalla.blit(ferrari, (x, y))
-        pantalla.blit(obstaculo_imagenes[obstaculo], (obstaculoX, obstaculoY))
-        tabla_puntaje(auto_pasado, puntaje, nivel, velocidadObstaculo, velocidad_base)
+            if e.type == pygame.KEYDOWN and e.key == pygame.K_ESCAPE:
+                return
+            if e.type == pygame.MOUSEBUTTONDOWN and btn_volver and btn_volver.collidepoint(e.pos):
+                return
+        pantalla.blit(fondo_instrucciones, (0, 0))
+        pantalla.blit(overlay, (0, 0))
+        for i, text in enumerate(lineas):
+            txt_surf = fuente.render(text, True, (255, 255, 255))
+            txt_rect = txt_surf.get_rect(center=(ancho//2, 100 + i*40))
+            pantalla.blit(txt_surf, txt_rect)
+        btn_volver = dibujar_boton("Volver", (ancho-120)//2, alto-80, 120, 50, (70, 130, 180))
         pygame.display.update()
         reloj.tick(60)
 
-juego()
-pygame.quit()
+# Selector de auto antes de empezar la carrera
+def seleccionar_auto():
+    """
+    Muestra en pantalla los 10 coches disponibles y devuelve el índice elegido.
+    """
+    nombres = ["Ferrari", "Red Bull", "Mercedes", "McLaren", "Alpine",
+               "Aston Martin", "Williams", "Haas", "Racing Bulls", "Kick"]
+    imagenes = [ferrari] + obstaculo_imagenes.copy()
+
+    thumb_w, thumb_h = 112, 155
+    padding_x, padding_y = 20, 40
+    cols = 5
+    start_x = (ancho - (cols * thumb_w + (cols-1)*padding_x)) // 2
+    start_y = (alto - (2 * thumb_h + padding_y)) // 2
+
+    while True:
+        for e in pygame.event.get():
+            if e.type == pygame.QUIT:
+                pygame.quit(); sys.exit()
+            if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
+                mx, my = e.pos
+                for idx in range(len(imagenes)):
+                    col = idx % cols
+                    row = idx // cols
+                    x0 = start_x + col * (thumb_w + padding_x)
+                    y0 = start_y + row * (thumb_h + padding_y)
+                    if pygame.Rect(x0, y0, thumb_w, thumb_h).collidepoint(mx, my):
+                        return idx
+
+        pantalla.fill((29,29,28))
+        for idx, img in enumerate(imagenes):
+            thumb = pygame.transform.scale(img, (thumb_w, thumb_h))
+            col = idx % cols
+            row = idx // cols
+            x0 = start_x + col * (thumb_w + padding_x)
+            y0 = start_y + row * (thumb_h + padding_y)
+            pantalla.blit(thumb, (x0, y0))
+            txt = pygame.font.SysFont(None, 24).render(nombres[idx], True, (255,255,255))
+            pantalla.blit(txt, (x0 + (thumb_w - txt.get_width())//2, y0 + thumb_h + 5))
+
+        pygame.display.update()
+        reloj.tick(30)
+
+# Menú principal con título, botones y selección de auto
+def menu_principal():
+    pygame.mixer.music.load("Cancion.mp3")
+    pygame.mixer.music.play(-1)
+    bw, bh = 200, 50
+    mg = (ancho - 3*bw)//4
+    y0 = alto - 100
+    xs = [mg, mg+bw+mg, mg+2*(bw+mg)]
+    titulo_surface = f1_font.render("F1: DRIVE TO SURVIVE", True, (255, 255, 255))
+
+    while True:
+        for e in pygame.event.get():
+            if e.type == pygame.QUIT:
+                pygame.quit(); sys.exit()
+
+        pantalla.blit(fondo_menu, (0, 0))
+        pantalla.blit(titulo_surface, ((ancho - titulo_surface.get_width())//2, 30))
+
+        b1 = dibujar_boton("Jugar", xs[0], y0, bw, bh, (0, 200, 0))
+        b2 = dibujar_boton("Instrucciones", xs[1], y0, bw, bh, (0, 0, 200))
+        b3 = dibujar_boton("Salir", xs[2], y0, bw, bh, (200, 0, 0))
+
+        if b1.collidepoint(pygame.mouse.get_pos()) and pygame.mouse.get_pressed()[0]:
+            boton_sound.play()
+            idx = seleccionar_auto()
+            todas = [ferrari] + obstaculo_imagenes.copy()
+            auto_jugador = todas[idx]
+            oponentes = todas[:idx] + todas[idx+1:]
+            # Guardamos la lista de oponentes en global para reiniciar correctamente
+            global current_obstaculos
+            current_obstaculos = oponentes
+            juego(auto_jugador, oponentes)
+            pygame.mixer.music.load("Cancion.mp3")
+            pygame.mixer.music.play(-1)
+
+        if b2.collidepoint(pygame.mouse.get_pos()) and pygame.mouse.get_pressed()[0]:
+            boton_sound.play()
+            mostrar_instrucciones()
+        if b3.collidepoint(pygame.mouse.get_pos()) and pygame.mouse.get_pressed()[0]:
+            boton_sound.play()
+            pygame.quit(); sys.exit()
+
+        pygame.display.update()
+        reloj.tick(60)
+
+# Lógica del juego con pausa y reinicio, recibiendo coche jugador y lista de oponentes
+def juego(auto_jugador, obstaculos):
+    pygame.mixer.music.load("carrera.mp3")
+    pygame.mixer.music.play(-1)
+
+    # Referencia global para reiniciar
+    global current_obstaculos
+    current_obstaculos = obstaculos
+
+    x, y, dx, obsX, obsY, obs, autos, pts, nivel = reiniciar_juego()
+    vb, vo = 10, 10
+    pistaY = 0
+    acel = des = False
+    ca = cd = 0
+    paus = False
+    font_pause = pygame.font.SysFont(None, 72)
+
+    while True:
+        for e in pygame.event.get():
+            if e.type == pygame.QUIT:
+                pygame.quit(); sys.exit()
+            if e.type == pygame.KEYDOWN:
+                if e.key == pygame.K_p:
+                    paus = not paus
+                if not paus:
+                    if e.key in [pygame.K_LEFT, pygame.K_a]:
+                        dx = -10
+                    if e.key in [pygame.K_RIGHT, pygame.K_d]:
+                        dx = 10
+                    if e.key == pygame.K_UP:
+                        acel = True
+                    if e.key == pygame.K_DOWN:
+                        des = True
+                if e.key == pygame.K_ESCAPE:
+                    return
+            if e.type == pygame.KEYUP and not paus:
+                if e.key in [pygame.K_LEFT, pygame.K_RIGHT, pygame.K_a, pygame.K_d]:
+                    dx = 0
+                if e.key == pygame.K_UP:
+                    acel, ca = False, 0
+                if e.key == pygame.K_DOWN:
+                    des, cd = False, 0
+
+        if paus:
+            pantalla.blit(font_pause.render("PAUSA", True, (255, 255, 255)), ((ancho-150)//2, (alto-100)//2))
+            pygame.display.update()
+            reloj.tick(5)
+            continue
+
+        x += dx
+        if acel:
+            ca += 1
+            if ca >= 4:
+                vo += 1
+                ca = 0
+        if des:
+            cd += 1
+            if cd >= 4:
+                vo = max(1, vo - 1)
+                cd = 0
+
+        obsY += vo
+        pistaY = (pistaY + vo) % 85
+
+        # Colisiones
+        if x < 175 or x > 625 - ferrari_ancho or (
+           y < obsY + 155 and y + 155 > obsY and x + ferrari_ancho > obsX and x < obsX + 56):
+            mostrar_mensaje_choque(x, y, obsX)
+            x, y, dx, obsX, obsY, obs, autos, pts, nivel = reiniciar_juego()
+            vb, vo = 10, 10
+            pistaY = 0
+            acel = des = False
+            ca = cd = 0
+            continue
+
+        # Cuando pasa un obstáculo
+        if obsY > alto:
+            obsY = -155
+            obsX = random.randrange(175, 625)
+            obs = random.randint(0, len(obstaculos) - 1)
+            autos += 1
+            pts += 15 if vo > vb else 5 if vo < vb else 10
+            if autos == 10 * (nivel + 1):
+                nivel += 1
+                vb += 3
+                vo = max(vo, vb)
+                mostrar_mensaje_nivel(nivel)
+
+        fondo(pistaY)
+        pantalla.blit(auto_jugador, (x, y))
+        pantalla.blit(obstaculos[obs], (obsX, obsY))
+        tabla_puntaje(autos, pts, nivel, vo, vb)
+
+        pygame.display.update()
+        reloj.tick(60)
+
+if __name__ == "__main__":
+    # Inicializamos la lista global (por si el usuario cierra sin jugar)
+    current_obstaculos = obstaculo_imagenes.copy()
+    menu_principal()
+    pygame.quit()
