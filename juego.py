@@ -299,14 +299,14 @@ def juego(auto_jugador, lista_obstaculos):
                 if not en_pausa:
                     if evento.key in (pygame.K_LEFT, pygame.K_a): vel_x = -10
                     if evento.key in (pygame.K_RIGHT, pygame.K_d): vel_x = 10
-                    if evento.key == pygame.K_UP: acelerar = True
-                    if evento.key == pygame.K_DOWN: desacelerar = True
+                    if evento.key == pygame.K_UP or evento.key == pygame.K_w: acelerar = True
+                    if evento.key == pygame.K_DOWN or evento.key == pygame.K_s: desacelerar = True
                 if evento.key == pygame.K_ESCAPE:
                     return  # Regresa al menú principal
             if evento.type == pygame.KEYUP and not en_pausa:
                 if evento.key in (pygame.K_LEFT, pygame.K_RIGHT, pygame.K_a, pygame.K_d): vel_x = 0
-                if evento.key == pygame.K_UP: acelerar, contador_acel = False, 0
-                if evento.key == pygame.K_DOWN: desacelerar, contador_desc = False, 0
+                if evento.key == pygame.K_UP or evento.key == pygame.K_w: acelerar, contador_acel = False, 0
+                if evento.key == pygame.K_DOWN or evento.key == pygame.K_s: desacelerar, contador_desc = False, 0
 
         if en_pausa:
             texto_pausa = fuente_pausa.render("PAUSA", True, (255,255,255))
