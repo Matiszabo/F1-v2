@@ -136,7 +136,7 @@ def panel_estadisticas(autos_pas, pts, niv, vel, vel_base):
 def mostrar_choque(px,py):
     pygame.mixer.music.pause(); pantalla.blit(imagen_humo_explosion,(px-imagen_humo_explosion.get_width()//2,py-imagen_humo_explosion.get_height()//2))
     x=(ancho_ventana-texto_mensaje_choque.get_width())//2; y=(alto_ventana-texto_mensaje_choque.get_height())//2
-    pantalla.blit(texto_mensaje_choque,(x,y)); sonido_explosion.play(); pygame.display.update(); time.sleep(2);
+    pantalla.blit(texto_mensaje_choque,(x,y)); sonido_explosion.play(); pygame.display.update(); time.sleep(2)
     pygame.mixer.music.unpause()
 
 # -----------------------------------------------------------------------------
